@@ -57,3 +57,40 @@ if st.button("Generate My Playlist"):
         
         st.success(f"Done! Created your '{mood}' mix.")
         st.link_button("Open Playlist on Spotify", new_playlist['external_urls']['spotify'])
+
+        # Track mood counts in the session
+if 'mood_counts' not in st.secrets: # In a real app, use a DB. For now, we simulate:
+    st.session_state.mood_counts = {"Happy": 15, "Sad": 10, "Energetic": 25, "Calm": 8}
+
+with st.sidebar:
+    st.header("📊 Trending Moods")
+    # Display as a simple bar chart
+    st.bar_chart(st.session_state.mood_counts)
+    
+    st.write("Most people are feeling **Energetic** today!")
+
+    from PIL import Image, ImageDraw, ImageFont
+import io
+
+def generate_cover(mood_name):
+    # Create a square canvas with a gradient or solid color
+    img = Image.new('RGB', (640, 640), color = (30, 215, 96)) # Spotify Green
+    d = ImageDraw.Draw(img)
+    
+    # Add text (You can customize fonts later)
+    d.text((100, 280), f"My {mood_name} Raag", fill=(255, 255, 255))
+    
+    # Save to a byte buffer
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    byte_im = buf.getvalue()
+    return byte_im
+
+# Inside your "Generate" button logic:
+cover_image = generate_cover(mood)
+st.download_button(
+    label="🖼️ Download Playlist Cover",
+    data=cover_image,
+    file_name=f"{mood}_cover.png",
+    mime="image/png"
+)
