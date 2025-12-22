@@ -1,9 +1,11 @@
+import plotly.express as px
 import streamlit as st
 import os
 from dotenv import load_dotenv
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import random
+
 
 # Load secrets
 load_dotenv()
@@ -64,10 +66,26 @@ if 'mood_counts' not in st.secrets: # In a real app, use a DB. For now, we simul
 
 with st.sidebar:
     st.header("📊 Trending Moods")
-    # Display as a simple bar chart
-    st.bar_chart(st.session_state.mood_counts)
     
-    st.write("Most people are feeling **Energetic** today!")
+    # Your mood data
+    mood_data = {"Mood": ["Happy", "Sad", "Energetic", "Calm"], 
+                 "Count": [15, 10, 25, 8]}
+    
+    # Create a colorful Plotly bar chart
+    fig = px.bar(mood_data, x='Mood', y='Count', 
+                 color='Mood', # This makes each bar a different color
+                 color_discrete_map={
+                     "Happy": "#FFD700",    # Gold
+                     "Sad": "#4682B4",      # Steel Blue
+                     "Energetic": "#FF4500", # Orange Red
+                     "Calm": "#3CB371"       # Medium Sea Green
+                 },
+                 template="plotly_dark") # Matches Spotify's dark theme
+    
+    # Remove unnecessary labels for a cleaner sidebar look
+    fig.update_layout(showlegend=False, margin=dict(l=0, r=0, t=0, b=0))
+    
+    st.plotly_chart(fig, use_container_width=True)
 
     from PIL import Image, ImageDraw, ImageFont
 import io
