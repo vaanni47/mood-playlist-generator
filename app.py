@@ -1,71 +1,59 @@
+import streamlit as st
 import os
 from dotenv import load_dotenv
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import random
 
-# 1. Load your secrets
+# Load secrets
 load_dotenv()
 
-client_id = os.getenv('SPOTIPY_CLIENT_ID')
-client_secret = os.getenv('SPOTIPY_CLIENT_SECRET')
-redirect_uri = os.getenv('SPOTIPY_REDIRECT_URI')
+# Streamlit UI Setup
+st.set_page_config(page_title="Raag", page_icon="🎵")
+st.title("🎵 Moodify: Global-Desi Mix")
+st.markdown("Create a custom Spotify playlist based on your mood!")
 
-# 2. Setup Authentication
+# Spotify Auth
 scope = "playlist-modify-public user-top-read"
 sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
-    client_id=client_id,
-    client_secret=client_secret,
-    redirect_uri=redirect_uri,
+    client_id=os.getenv('SPOTIPY_CLIENT_ID'),
+    client_secret=os.getenv('SPOTIPY_CLIENT_SECRET'),
+    redirect_uri=os.getenv('SPOTIPY_REDIRECT_URI'),
     scope=scope
 ))
 
-# 3. Verify Connection
-user = sp.current_user()
-print(f"\n--- Connected as: {user['display_name']} ---")
+# User Interaction
+mood = st.selectbox("How are you feeling?", ["Happy", "Sad", "Chill", "Workout"])
 
-# 4. Interactive Input
-mood = input("\nHow are you feeling today? (happy, sad, chill, workout): ").lower()
-
-# 5. Search Map (Global + Bollywood specific keywords)
-search_map = {
-    "happy":  ["happy upbeat pop 2025", "bollywood party hits", "bhangra dance"],
-    "sad":    ["sad melancholic acoustic", "hindi sad songs", "emotional bollywood"],
-    "chill":  ["lofi chill study beats", "bollywood lofi", "hindi acoustic"],
-    "workout": ["high energy gym phonk", "bollywood workout beats", "punjabi gym"]
-}
-
-queries = search_map.get(mood, ["chill hits", "bollywood chill"])
-all_track_uris = []
-
-print(f"Searching for a mix of global and Bollywood {mood} tracks...")
-
-# 6. Loop through multiple queries to get a mix
-for query in queries:
-    # We search for a playlist first
-    search_results = sp.search(q=query, type='playlist', limit=1)
-    if search_results['playlists']['items']:
-        playlist_id = search_results['playlists']['items'][0]['id']
+if st.button("Generate My Playlist"):
+    with st.spinner("Mixing your tracks..."):
+        user = sp.current_user()
         
-        # Pull 20 tracks from this playlist (increased limit!)
-        tracks = sp.playlist_items(playlist_id, limit=20)
-        uris = [item['track']['uri'] for item in tracks['items'] if item['track']]
-        all_track_uris.extend(uris)
+        search_map = {
+            "Happy":  ["happy upbeat pop 2025", "bollywood party hits"],
+            "Sad":    ["sad melancholic acoustic", "hindi sad songs"],
+            "Chill":  ["lofi chill study beats", "bollywood lofi"],
+            "Workout": ["high energy gym phonk", "bollywood workout beats"]
+        }
+        
+        queries = search_map.get(mood)
+        all_track_uris = []
+        
+        for query in queries:
+            search_results = sp.search(q=query, type='playlist', limit=1)
+            playlist_id = search_results['playlists']['items'][0]['id']
+            tracks = sp.playlist_items(playlist_id, limit=20)
+            uris = [item['track']['uri'] for item in tracks['items'] if item['track']]
+            all_track_uris.extend(uris)
 
-# 7. Shuffle the mix so global and Bollywood songs are intermingled
-random.shuffle(all_track_uris)
-# Limit to 50 tracks total for a good playlist size
-final_uris = all_track_uris[:50]
-
-# 8. Create and Fill the Playlist
-new_playlist = sp.user_playlist_create(
-    user=user['id'], 
-    name=f"My {mood.capitalize()} Global-Desi Mix", 
-    public=True,
-    description="Custom mix of global and Bollywood hits based on my mood."
-)
-
-sp.playlist_add_items(playlist_id=new_playlist['id'], items=final_uris)
-
-print(f"\nSUCCESS! Created your {len(final_uris)}-track '{mood.capitalize()}' mix.")
-print(f"Check your Spotify now!")
+        random.shuffle(all_track_uris)
+        
+        new_playlist = sp.user_playlist_create(
+            user=user['id'], 
+            name=f"My {mood} Global-Desi Mix", 
+            description="Generated via Moodify Web App"
+        )
+        sp.playlist_add_items(playlist_id=new_playlist['id'], items=all_track_uris[:40])
+        
+        st.success(f"Done! Created your '{mood}' mix.")
+        st.link_button("Open Playlist on Spotify", new_playlist['external_urls']['spotify'])
