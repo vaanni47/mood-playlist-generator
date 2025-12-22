@@ -1,3 +1,4 @@
+import streamlit.components.v1 as components
 import plotly.express as px
 import streamlit as st
 import os
@@ -5,13 +6,13 @@ from dotenv import load_dotenv
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import random
+from PIL import Image, ImageDraw
+import io
 
-
-# Load secrets
+# 1. SETUP & AUTH
 load_dotenv()
 
-# Streamlit UI Setup
-st.set_page_config(page_title="Raag", page_icon="🎵")
+st.set_page_config(page_title="Raag", page_icon="🎵", layout="wide")
 st.title("🎵 Moodify: Global-Desi Mix")
 st.markdown("Create a custom Spotify playlist based on your mood!")
 
@@ -24,17 +25,46 @@ sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
     scope=scope
 ))
 
-# User Interaction
+# 2. HELPER FUNCTIONS
+def generate_cover(mood_name):
+    """Creates a custom 640x640 cover image for the playlist."""
+    img = Image.new('RGB', (640, 640), color=(30, 215, 96)) # Spotify Green
+    d = ImageDraw.Draw(img)
+    # Simple branding text
+    d.text((150, 300), f"RAAG: {mood_name.upper()}", fill=(255, 255, 255))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+# 3. SIDEBAR (Trending Moods)
+if 'mood_counts' not in st.session_state:
+    st.session_state.mood_counts = {"Happy": 15, "Sad": 10, "Chill": 25, "Workout": 8}
+
+with st.sidebar:
+    st.header("📊 Trending Moods")
+    mood_data = {
+        "Mood": list(st.session_state.mood_counts.keys()), 
+        "Count": list(st.session_state.mood_counts.values())
+    }
+    fig = px.bar(mood_data, x='Mood', y='Count', color='Mood',
+                 color_discrete_map={"Happy": "#FFD700", "Sad": "#4682B4", "Chill": "#3CB371", "Workout": "#FF4500"},
+                 template="plotly_dark")
+    fig.update_layout(showlegend=False, margin=dict(l=0, r=0, t=0, b=0), height=300)
+    st.plotly_chart(fig, use_container_width=True)
+
+# 4. MAIN INTERFACE
 mood = st.selectbox("How are you feeling?", ["Happy", "Sad", "Chill", "Workout"])
 
 if st.button("Generate My Playlist"):
     with st.spinner("Mixing your tracks..."):
-        user = sp.current_user()
+        # Update session state for trending chart
+        st.session_state.mood_counts[mood] += 1
         
+        user = sp.current_user()
         search_map = {
-            "Happy":  ["happy upbeat pop 2025", "bollywood party hits"],
-            "Sad":    ["sad melancholic acoustic", "hindi sad songs"],
-            "Chill":  ["lofi chill study beats", "bollywood lofi"],
+            "Happy":   ["happy upbeat pop 2025", "bollywood party hits"],
+            "Sad":     ["sad melancholic acoustic", "hindi sad songs"],
+            "Chill":   ["lofi chill study beats", "bollywood lofi"],
             "Workout": ["high energy gym phonk", "bollywood workout beats"]
         }
         
@@ -43,72 +73,78 @@ if st.button("Generate My Playlist"):
         
         for query in queries:
             search_results = sp.search(q=query, type='playlist', limit=1)
-            playlist_id = search_results['playlists']['items'][0]['id']
-            tracks = sp.playlist_items(playlist_id, limit=20)
-            uris = [item['track']['uri'] for item in tracks['items'] if item['track']]
-            all_track_uris.extend(uris)
+            if search_results['playlists']['items']:
+                p_id = search_results['playlists']['items'][0]['id']
+                tracks = sp.playlist_items(p_id, limit=20)
+                uris = [item['track']['uri'] for item in tracks['items'] if item['track']]
+                all_track_uris.extend(uris)
 
         random.shuffle(all_track_uris)
         
+        # Create Playlist
         new_playlist = sp.user_playlist_create(
             user=user['id'], 
             name=f"My {mood} Global-Desi Mix", 
-            description="Generated via Moodify Web App"
+            description="Generated via Moodify Web App",
+            public=True
         )
         sp.playlist_add_items(playlist_id=new_playlist['id'], items=all_track_uris[:40])
         
+        # Fix: Define the URL and ID correctly
+        playlist_url = new_playlist['external_urls']['spotify']
+        playlist_id = new_playlist['id']
+
+        # Success Message & Buttons
         st.success(f"Done! Created your '{mood}' mix.")
-        st.link_button("Open Playlist on Spotify", new_playlist['external_urls']['spotify'])
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.link_button("🚀 Open on Spotify", playlist_url)
+        with col2:
+            cover_image = generate_cover(mood)
+            st.download_button(
+                label="🖼️ Download Cover",
+                data=cover_image,
+                file_name=f"{mood}_cover.png",
+                mime="image/png"
+            )
 
-        # Track mood counts in the session
-if 'mood_counts' not in st.secrets: # In a real app, use a DB. For now, we simulate:
-    st.session_state.mood_counts = {"Happy": 15, "Sad": 10, "Energetic": 25, "Calm": 8}
+        # 5. EMBED PLAYER
+        st.markdown("---")
+        st.markdown("### 🎧 Preview your Raag Mix")
+        embed_link = f"https://open.spotify.com/embed/playlist/{playlist_id}?utm_source=generator&theme=0"
+        components.iframe(embed_link, height=380, scrolling=False)
 
+        # Initialize history in session state
+if 'history' not in st.session_state:
+    st.session_state.history = []
+
+# ... inside your 'Generate' button logic ...
+# After creating the playlist, add it to history:
+st.session_state.history.append({
+    "mood": mood,
+    "url": playlist_url,
+    "id": playlist_id
+})
+
+# Display History at the bottom of the page
+if st.session_state.history:
+    st.markdown("## 🕒 Recent Raags")
+    cols = st.columns(len(st.session_state.history[-4:])) # Show last 4
+    for i, item in enumerate(st.session_state.history[-4:]):
+        with cols[i]:
+            st.info(f"🎭 {item['mood']}")
+            st.link_button("View Mix", item['url'])
+
+            from streamlit_lottie import st_lottie
+import requests
+
+def load_lottieurl(url):
+    r = requests.get(url)
+    return r.json() if r.status_code == 200 else None
+
+lottie_music = load_lottieurl("https://assets5.lottiefiles.com/packages/lf20_Y6S86j.json")
+
+# Use it in the sidebar or above your results
 with st.sidebar:
-    st.header("📊 Trending Moods")
-    
-    # Your mood data
-    mood_data = {"Mood": ["Happy", "Sad", "Energetic", "Calm"], 
-                 "Count": [15, 10, 25, 8]}
-    
-    # Create a colorful Plotly bar chart
-    fig = px.bar(mood_data, x='Mood', y='Count', 
-                 color='Mood', # This makes each bar a different color
-                 color_discrete_map={
-                     "Happy": "#FFD700",    # Gold
-                     "Sad": "#4682B4",      # Steel Blue
-                     "Energetic": "#FF4500", # Orange Red
-                     "Calm": "#3CB371"       # Medium Sea Green
-                 },
-                 template="plotly_dark") # Matches Spotify's dark theme
-    
-    # Remove unnecessary labels for a cleaner sidebar look
-    fig.update_layout(showlegend=False, margin=dict(l=0, r=0, t=0, b=0))
-    
-    st.plotly_chart(fig, use_container_width=True)
-
-    from PIL import Image, ImageDraw, ImageFont
-import io
-
-def generate_cover(mood_name):
-    # Create a square canvas with a gradient or solid color
-    img = Image.new('RGB', (640, 640), color = (30, 215, 96)) # Spotify Green
-    d = ImageDraw.Draw(img)
-    
-    # Add text (You can customize fonts later)
-    d.text((100, 280), f"My {mood_name} Raag", fill=(255, 255, 255))
-    
-    # Save to a byte buffer
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    byte_im = buf.getvalue()
-    return byte_im
-
-# Inside your "Generate" button logic:
-cover_image = generate_cover(mood)
-st.download_button(
-    label="🖼️ Download Playlist Cover",
-    data=cover_image,
-    file_name=f"{mood}_cover.png",
-    mime="image/png"
-)
+    st_lottie(lottie_music, height=150, key="music_visualizer")
