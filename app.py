@@ -17,14 +17,25 @@ load_dotenv()
 st.set_page_config(page_title="Raag", page_icon="🎵", layout="wide")
 
 # Helper for Lottie
+# Updated robust Lottie URL
+lottie_url = "https://lottie.host/819d268a-215f-4d92-951b-741a34a1795b/In107f9J9P.json"
+
 def load_lottieurl(url):
-    r = requests.get(url)
-    return r.json() if r.status_code == 200 else None
+    try:
+        r = requests.get(url, timeout=5)
+        if r.status_code != 200:
+            return None
+        return r.json()
+    except:
+        return None
 
-lottie_music = load_lottieurl("https://lottie.host/819d268a-215f-4d92-951b-741a34a1795b/In107f9J9P.json")
+lottie_music = load_lottieurl(lottie_url)
 
-st.title("🎵 Moodify: Global-Desi Mix")
-st.markdown("Create a custom Spotify playlist based on your mood!")
+with st.sidebar:
+    if lottie_music:
+        st_lottie(lottie_music, height=150, key="music_visualizer")
+    else:
+        st.markdown("🎵 **Raag Music Mode**")
 
 # Spotify Auth
 scope = "playlist-modify-public user-top-read"
