@@ -53,8 +53,14 @@ def generate_cover(mood_name):
 
 # 4. SIDEBAR
 with st.sidebar:
-    st_lottie(lottie_music, height=150, key="music_visualizer")
+    # Only show if the animation loaded successfully
+    if lottie_music:
+        st_lottie(lottie_music, height=150, key="music_visualizer")
+    else:
+        st.write("🎵") # Fallback icon if animation fails
+    
     st.header("📊 Trending Moods")
+    # ... rest of your sidebar code ...
     mood_data = {
         "Mood": list(st.session_state.mood_counts.keys()), 
         "Count": list(st.session_state.mood_counts.values())
