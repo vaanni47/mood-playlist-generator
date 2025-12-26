@@ -8,11 +8,21 @@ from spotipy.oauth2 import SpotifyOAuth
 import random
 from PIL import Image, ImageDraw
 import io
+from streamlit_lottie import st_lottie
+import requests
 
 # 1. SETUP & AUTH
 load_dotenv()
 
 st.set_page_config(page_title="Raag", page_icon="🎵", layout="wide")
+
+# Helper for Lottie
+def load_lottieurl(url):
+    r = requests.get(url)
+    return r.json() if r.status_code == 200 else None
+
+lottie_music = load_lottieurl("https://lottie.host/819d268a-215f-4d92-951b-741a34a1795b/In107f9J9P.json")
+
 st.title("🎵 Moodify: Global-Desi Mix")
 st.markdown("Create a custom Spotify playlist based on your mood!")
 
@@ -25,22 +35,25 @@ sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
     scope=scope
 ))
 
-# 2. HELPER FUNCTIONS
+# 2. SESSION STATE INITIALIZATION
+if 'mood_counts' not in st.session_state:
+    st.session_state.mood_counts = {"Happy": 15, "Sad": 10, "Chill": 25, "Workout": 8}
+
+if 'history' not in st.session_state:
+    st.session_state.history = []
+
+# 3. HELPER FUNCTIONS
 def generate_cover(mood_name):
-    """Creates a custom 640x640 cover image for the playlist."""
     img = Image.new('RGB', (640, 640), color=(30, 215, 96)) # Spotify Green
     d = ImageDraw.Draw(img)
-    # Simple branding text
     d.text((150, 300), f"RAAG: {mood_name.upper()}", fill=(255, 255, 255))
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
 
-# 3. SIDEBAR (Trending Moods)
-if 'mood_counts' not in st.session_state:
-    st.session_state.mood_counts = {"Happy": 15, "Sad": 10, "Chill": 25, "Workout": 8}
-
+# 4. SIDEBAR
 with st.sidebar:
+    st_lottie(lottie_music, height=150, key="music_visualizer")
     st.header("📊 Trending Moods")
     mood_data = {
         "Mood": list(st.session_state.mood_counts.keys()), 
@@ -52,7 +65,7 @@ with st.sidebar:
     fig.update_layout(showlegend=False, margin=dict(l=0, r=0, t=0, b=0), height=300)
     st.plotly_chart(fig, use_container_width=True)
 
-# 4. MAIN INTERFACE
+# 5. MAIN INTERFACE
 mood = st.selectbox("How are you feeling?", ["Happy", "Sad", "Chill", "Workout"])
 
 if st.button("Generate My Playlist"):
@@ -90,11 +103,16 @@ if st.button("Generate My Playlist"):
         )
         sp.playlist_add_items(playlist_id=new_playlist['id'], items=all_track_uris[:40])
         
-        # Fix: Define the URL and ID correctly
         playlist_url = new_playlist['external_urls']['spotify']
         playlist_id = new_playlist['id']
 
-        # Success Message & Buttons
+        # ADD TO HISTORY
+        st.session_state.history.append({
+            "mood": mood,
+            "url": playlist_url,
+            "id": playlist_id
+        })
+
         st.success(f"Done! Created your '{mood}' mix.")
         
         col1, col2 = st.columns(2)
@@ -109,42 +127,20 @@ if st.button("Generate My Playlist"):
                 mime="image/png"
             )
 
-        # 5. EMBED PLAYER
         st.markdown("---")
         st.markdown("### 🎧 Preview your Raag Mix")
         embed_link = f"https://open.spotify.com/embed/playlist/{playlist_id}?utm_source=generator&theme=0"
         components.iframe(embed_link, height=380, scrolling=False)
 
-        # Initialize history in session state
-if 'history' not in st.session_state:
-    st.session_state.history = []
-
-# ... inside your 'Generate' button logic ...
-# After creating the playlist, add it to history:
-st.session_state.history.append({
-    "mood": mood,
-    "url": playlist_url,
-    "id": playlist_id
-})
-
-# Display History at the bottom of the page
+# 6. DISPLAY HISTORY (Outside the button, so it stays visible)
 if st.session_state.history:
+    st.markdown("---")
     st.markdown("## 🕒 Recent Raags")
-    cols = st.columns(len(st.session_state.history[-4:])) # Show last 4
-    for i, item in enumerate(st.session_state.history[-4:]):
+    # Show last 4 entries
+    recent_items = st.session_state.history[-4:]
+    cols = st.columns(len(recent_items)) 
+    
+    for i, item in enumerate(recent_items):
         with cols[i]:
             st.info(f"🎭 {item['mood']}")
-            st.link_button("View Mix", item['url'])
-
-            from streamlit_lottie import st_lottie
-import requests
-
-def load_lottieurl(url):
-    r = requests.get(url)
-    return r.json() if r.status_code == 200 else None
-
-lottie_music = load_lottieurl("https://assets5.lottiefiles.com/packages/lf20_Y6S86j.json")
-
-# Use it in the sidebar or above your results
-with st.sidebar:
-    st_lottie(lottie_music, height=150, key="music_visualizer")
+            st.link_button("View Mix", item['url'], key=f"hist_{i}")
